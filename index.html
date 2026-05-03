@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CustomHBM Memory Transaction Simulator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="header-chip-icon">
+        <svg width="36" height="36" viewBox="0 0 36 36"><rect x="8" y="8" width="20" height="20" rx="3" fill="#3b82f6" opacity="0.15" stroke="#3b82f6" stroke-width="1.5"/><rect x="12" y="12" width="12" height="12" rx="2" fill="#3b82f6" opacity="0.3" stroke="#3b82f6" stroke-width="1.5"/><line x1="4" y1="13" x2="8" y2="13" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/><line x1="4" y1="18" x2="8" y2="18" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/><line x1="4" y1="23" x2="8" y2="23" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/><line x1="28" y1="13" x2="32" y2="13" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/><line x1="28" y1="18" x2="32" y2="18" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/><line x1="28" y1="23" x2="32" y2="23" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/><line x1="13" y1="4" x2="13" y2="8" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/><line x1="18" y1="4" x2="18" y2="8" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/><line x1="23" y1="4" x2="23" y2="8" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/><line x1="13" y1="28" x2="13" y2="32" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/><line x1="18" y1="28" x2="18" y2="32" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/><line x1="23" y1="28" x2="23" y2="32" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/></svg>
+      </div>
+      <div class="header-titles">
+        <h1><span class="title-blue">Custom HBM</span> <span class="title-gray">Architecture</span></h1>
+        <h2>Memory Transaction Simulator</h2>
+      </div>
+      <div class="header-badges">
+        <span class="badge badge-red">HBM · SRAM · PE</span>
+        <span class="badge badge-purple">Bottleneck Detection</span>
+        <span class="badge badge-green">Roofline Analysis</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="app-body">
+
+    <!-- Left Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-scroll">
+
+        <div class="param-section open" id="section-system">
+          <div class="param-section-header" onclick="toggleSection('section-system')">
+            <span class="section-label">Clock &amp; System</span>
+            <span class="chevron">▾</span>
+          </div>
+          <div class="param-section-body">
+            <div class="param-row">
+              <label>Clock Frequency</label>
+              <div class="input-unit"><input type="number" id="clockFreqGHz" value="2.0" min="0.1" max="10" step="0.1"><span class="unit">GHz</span></div>
+            </div>
+            <div class="param-row">
+              <label>PEs / Multi-PE</label>
+              <input type="number" id="pesPerMultiPE" value="8" min="1" max="32" oninput="updateTotalPEs()">
+            </div>
+            <div class="param-row">
+              <label>Multi-PEs / SiP</label>
+              <input type="number" id="multiPEsPerSiP" value="16" min="1" max="64" oninput="updateTotalPEs()">
+              <span class="hint-inline">(4×4)</span>
+            </div>
+            <div class="param-row">
+              <label>SiPs simulated</label>
+              <input type="number" id="numSiPs" value="1" min="1" max="6" oninput="updateTotalPEs()">
+            </div>
+            <div class="param-row derived-row">
+              <label>→ Total PEs</label>
+              <div class="derived-value" id="total-pes-display">128</div>
+            </div>
+            <div class="param-row">
+              <label>MACs / PE / cycle</label>
+              <input type="number" id="macsPerPE" value="256" min="1" max="65536">
+            </div>
+            <div class="param-row">
+              <label>HBM Banks</label>
+              <input type="number" id="numHBMBanks" value="4" min="1" max="16">
+            </div>
+            <div class="param-row">
+              <label>Data Type</label>
+              <select id="dataType">
+                <option value="FP32">FP32 (4B)</option>
+                <option value="BF16" selected>BF16 (2B)</option>
+                <option value="FP16">FP16 (2B)</option>
+                <option value="FP8">FP8 (1B)</option>
+                <option value="INT8">INT8 (1B)</option>
+                <option value="INT4">INT4 (0.5B)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="param-section open" id="section-model">
+          <div class="param-section-header" onclick="toggleSection('section-model')">
+            <span class="section-label">AI Model</span>
+            <span class="chevron">▾</span>
+          </div>
+          <div class="param-section-body">
+            <div class="param-row">
+              <label>Preset</label>
+              <select id="modelPreset" onchange="applyModelPreset()">
+                <option value="custom">Custom</option>
+                <option value="llama7b">LLaMA-2 7B</option>
+                <option value="llama13b">LLaMA-2 13B</option>
+                <option value="llama70b">LLaMA-2 70B</option>
+                <option value="llama405b">LLaMA-3 405B</option>
+                <option value="gpt3">GPT-3 175B</option>
+              </select>
+            </div>
+            <div class="param-row">
+              <label>Layers</label>
+              <input type="number" id="numLayers" value="32" min="1" max="256">
+            </div>
+            <div class="param-row">
+              <label>Hidden Dim</label>
+              <input type="number" id="hiddenDim" value="4096" min="64" max="32768" step="64">
+            </div>
+            <div class="param-row">
+              <label>Attention Heads</label>
+              <input type="number" id="numHeads" value="32" min="1" max="256">
+            </div>
+            <div class="param-row">
+              <label>FFN Ratio</label>
+              <input type="number" id="ffnRatio" value="4" min="1" max="8" step="0.5">
+            </div>
+            <div class="param-row">
+              <label>Sequence Length</label>
+              <input type="number" id="seqLen" value="2048" min="1" max="131072">
+            </div>
+            <div class="param-row">
+              <label>Batch Size</label>
+              <input type="number" id="batchSize" value="1" min="1" max="512">
+            </div>
+          </div>
+        </div>
+
+        <div class="param-section open" id="section-parallel">
+          <div class="param-section-header" onclick="toggleSection('section-parallel')">
+            <span class="section-label">Parallelism</span>
+            <span class="chevron">▾</span>
+          </div>
+          <div class="param-section-body">
+            <div class="param-row">
+              <label>Tensor (TP)</label>
+              <input type="number" id="TP" value="1" min="1" max="64">
+            </div>
+            <div class="param-row">
+              <label>Pipeline (PP)</label>
+              <input type="number" id="PP" value="1" min="1" max="64">
+            </div>
+            <div class="param-row">
+              <label>Data (DP)</label>
+              <input type="number" id="DP" value="1" min="1" max="1024">
+            </div>
+            <div class="param-row">
+              <label>Expert (EP)</label>
+              <input type="number" id="EP" value="1" min="1" max="64">
+            </div>
+          </div>
+        </div>
+
+        <div class="param-section open" id="section-memory">
+          <div class="param-section-header" onclick="toggleSection('section-memory')">
+            <span class="section-label">Memory Configuration</span>
+            <span class="chevron">▾</span>
+          </div>
+          <div class="param-section-body">
+            <div class="param-subsection-label">HBM (Off-chip)</div>
+            <div class="param-row">
+              <label>Bandwidth</label>
+              <div class="input-unit"><input type="number" id="hbmBandwidthGBs" value="1000" min="1" max="10000" step="10"><span class="unit">GB/s</span></div>
+            </div>
+            <div class="param-row">
+              <label>Latency</label>
+              <div class="input-unit"><input type="number" id="hbmLatencyNs" value="100" min="1" max="1000"><span class="unit">ns</span></div>
+            </div>
+            <div class="param-row">
+              <label>Data Rate / pin</label>
+              <div class="input-unit"><input type="number" id="hbmDataRateGbps" value="6.4" min="0.1" max="20" step="0.1"><span class="unit">Gbps</span></div>
+            </div>
+            <div class="param-row">
+              <label># IO Pins / stack</label>
+              <input type="number" id="hbmNumIO" value="1024" min="128" max="4096" step="128">
+            </div>
+            <div class="param-row">
+              <label>Capacity / die</label>
+              <div class="input-unit"><input type="number" id="hbmCapPerDieGB" value="2" min="0.5" max="8" step="0.5"><span class="unit">GB</span></div>
+            </div>
+            <div class="param-row">
+              <label># Stack dies</label>
+              <input type="number" id="hbmNumStackDie" value="8" min="2" max="16">
+            </div>
+            <div class="param-row derived-row">
+              <label>Computed BW</label>
+              <div class="derived-value" id="hbm-computed-bw">— GB/s</div>
+            </div>
+            <div class="param-subsection-label" style="margin-top:8px">SRAM (On-chip)</div>
+            <div class="param-row">
+              <label>Bandwidth</label>
+              <div class="input-unit"><input type="number" id="sramBandwidthGBs" value="10000" min="1" max="100000" step="100"><span class="unit">GB/s</span></div>
+            </div>
+            <div class="param-row">
+              <label>Latency</label>
+              <div class="input-unit"><input type="number" id="sramLatencyNs" value="1" min="0.1" max="100" step="0.1"><span class="unit">ns</span></div>
+            </div>
+            <div class="param-row">
+              <label>Capacity / PE</label>
+              <div class="input-unit"><input type="number" id="sramCapacityMB" value="16" min="1" max="512" step="1"><span class="unit">MB</span></div>
+            </div>
+            <div class="param-row">
+              <label># Banks / PE</label>
+              <input type="number" id="sramNumBanks" value="16" min="2" max="128" step="2">
+            </div>
+          </div>
+        </div>
+
+        <div class="param-section open" id="section-network">
+          <div class="param-section-header" onclick="toggleSection('section-network')">
+            <span class="section-label">Network</span>
+            <span class="chevron">▾</span>
+          </div>
+          <div class="param-section-body">
+            <div class="param-row">
+              <label>Bandwidth</label>
+              <div class="input-unit"><input type="number" id="networkBandwidthGBs" value="100" min="1" max="10000" step="10"><span class="unit">GB/s</span></div>
+            </div>
+            <div class="param-row">
+              <label>Latency</label>
+              <div class="input-unit"><input type="number" id="networkLatencyUs" value="1" min="0.01" max="1000" step="0.1"><span class="unit">μs</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="param-section open" id="section-bus">
+          <div class="param-section-header" onclick="toggleSection('section-bus')">
+            <span class="section-label">Bus Configuration</span>
+            <span class="chevron">▾</span>
+          </div>
+          <div class="param-section-body">
+            <div class="param-row">
+              <label>Bus Width</label>
+              <select id="busWidthBits">
+                <option value="64">64-bit</option>
+                <option value="128">128-bit</option>
+                <option value="256" selected>256-bit</option>
+                <option value="512">512-bit</option>
+                <option value="1024">1024-bit</option>
+              </select>
+            </div>
+            <div class="param-row">
+              <label>Burst Length</label>
+              <div class="input-unit"><input type="number" id="burstLength" value="8" min="1" max="256"><span class="unit">beats</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar-actions">
+          <button class="btn-run" onclick="runSimulation()">&#9654; Run Simulation</button>
+          <button class="btn-reset" onclick="resetToDefaults()">&#8635; Reset</button>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <div class="tabs-bar">
+        <button class="tab active" data-tab="architecture" onclick="switchTab('architecture',this)">Architecture</button>
+        <button class="tab" data-tab="analysis" onclick="switchTab('analysis',this)">Analysis</button>
+        <button class="tab" data-tab="transactions" onclick="switchTab('transactions',this)">Transactions</button>
+      </div>
+
+      <!-- Architecture Tab -->
+      <div id="tab-architecture" class="tab-pane active">
+        <div id="bottleneck-banner" class="bottleneck-banner hidden">
+          <div class="bn-icon" id="bn-icon"></div>
+          <div class="bn-text">
+            <strong id="bn-title"></strong>
+            <span id="bn-detail"></span>
+          </div>
+          <div class="bn-ratio" id="bn-ratio"></div>
+        </div>
+
+        <div class="arch-panel">
+          <div class="viz-toolbar">
+            <span class="viz-title-label">Architecture · Data Flow Visualization</span>
+            <div class="viz-controls">
+              <div class="level-buttons">
+                <button class="level-btn" data-level="tray" onclick="setHierarchyLevel('tray')">Tray</button>
+                <button class="level-btn" data-level="sip" onclick="setHierarchyLevel('sip')">SiP</button>
+                <button class="level-btn active" data-level="multipe" onclick="setHierarchyLevel('multipe')">Multi-PE</button>
+              </div>
+              <label class="ctrl-label">
+                <input type="checkbox" id="animToggle" checked onchange="toggleAnimation()"> Animate
+              </label>
+              <label class="ctrl-label">Speed
+                <select id="animSpeed" onchange="updateAnimSpeed()">
+                  <option value="0.3">0.3×</option>
+                  <option value="0.6">0.6×</option>
+                  <option value="1" selected>1×</option>
+                  <option value="2">2×</option>
+                  <option value="4">4×</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div id="arch-svg-container" class="arch-svg-container">
+            <div class="viz-placeholder" id="viz-placeholder">
+              <svg width="60" height="60" viewBox="0 0 60 60" fill="none"><rect x="10" y="10" width="40" height="40" rx="6" stroke="#cbd5e1" stroke-width="2"/><rect x="20" y="20" width="20" height="20" rx="3" stroke="#cbd5e1" stroke-width="2"/><line x1="2" y1="22" x2="10" y2="22" stroke="#cbd5e1" stroke-width="2"/><line x1="2" y1="30" x2="10" y2="30" stroke="#cbd5e1" stroke-width="2"/><line x1="2" y1="38" x2="10" y2="38" stroke="#cbd5e1" stroke-width="2"/><line x1="50" y1="22" x2="58" y2="22" stroke="#cbd5e1" stroke-width="2"/><line x1="50" y1="30" x2="58" y2="30" stroke="#cbd5e1" stroke-width="2"/><line x1="50" y1="38" x2="58" y2="38" stroke="#cbd5e1" stroke-width="2"/></svg>
+              <p>Configure parameters and click <strong>Run Simulation</strong></p>
+            </div>
+          </div>
+          <div id="flow-legend" class="flow-legend hidden">
+            <span class="legend-item"><span class="legend-dot" style="background:#ef4444"></span>HBM→DMA (load)</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#f59e0b"></span>DMA→SRAM (fill)</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#3b82f6"></span>SRAM→MAC (compute)</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#8b5cf6"></span>Control (route · sync)</span>
+            <span class="legend-item" style="margin-left:auto;font-style:italic;color:#94a3b8;font-size:10px">Click PE / HBM / Control to inspect internals</span>
+          </div>
+        </div>
+
+        <div id="key-metrics" class="key-metrics hidden">
+          <div class="metric-card card-blue">
+            <div class="mc-label">Total Clock Cycles</div>
+            <div class="mc-value" id="v-total-cycles">—</div>
+            <div class="mc-unit">cycles</div>
+          </div>
+          <div class="metric-card card-red">
+            <div class="mc-label">HBM Latency Cycles</div>
+            <div class="mc-value" id="v-latency">—</div>
+            <div class="mc-unit">cycles / txn</div>
+          </div>
+          <div class="metric-card card-orange">
+            <div class="mc-label">Burst Transfer Cycles</div>
+            <div class="mc-value" id="v-burst">—</div>
+            <div class="mc-unit">cycles</div>
+          </div>
+          <div class="metric-card card-purple">
+            <div class="mc-label">Bus Efficiency</div>
+            <div class="mc-value" id="v-bus-eff">—</div>
+            <div class="mc-unit">%</div>
+          </div>
+          <div class="metric-card card-teal">
+            <div class="mc-label">Total Time</div>
+            <div class="mc-value" id="v-time">—</div>
+            <div class="mc-unit" id="v-time-unit">ms</div>
+          </div>
+          <div class="metric-card card-green">
+            <div class="mc-label">Effective Bandwidth</div>
+            <div class="mc-value" id="v-eff-bw">—</div>
+            <div class="mc-unit">GB/s</div>
+          </div>
+          <div class="metric-card card-slate">
+            <div class="mc-label">Data Transferred</div>
+            <div class="mc-value" id="v-data">—</div>
+            <div class="mc-unit" id="v-data-unit">GB</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Analysis Tab -->
+      <div id="tab-analysis" class="tab-pane hidden">
+        <div class="analysis-grid">
+          <div class="chart-card">
+            <div class="chart-card-header">Roofline Model</div>
+            <canvas id="rooflineCanvas" width="420" height="320"></canvas>
+            <div id="roofline-legend" class="roofline-legend"></div>
+          </div>
+          <div class="chart-card">
+            <div class="chart-card-header">Time Breakdown</div>
+            <canvas id="breakdownCanvas" width="420" height="320"></canvas>
+          </div>
+        </div>
+        <div class="detail-table-card">
+          <div class="chart-card-header">Detailed Metrics</div>
+          <div id="detail-table">
+            <p class="no-data-msg">Run simulation to see detailed metrics.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Transactions Tab -->
+      <div id="tab-transactions" class="tab-pane hidden">
+        <div class="txn-card">
+          <div class="chart-card-header">Memory Transaction Timeline</div>
+          <canvas id="timelineCanvas" width="800" height="220"></canvas>
+        </div>
+        <div class="txn-card">
+          <div class="chart-card-header">Transaction Detail</div>
+          <div id="txn-detail">
+            <p class="no-data-msg">Run simulation to see transaction details.</p>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- PE / HBM Detail Modal -->
+  <div id="detail-modal" class="detail-modal hidden">
+    <div class="detail-modal-backdrop" onclick="closeDetailModal()"></div>
+    <div class="detail-modal-panel">
+      <div class="detail-modal-header">
+        <span id="detail-modal-title">Component Detail</span>
+        <button class="detail-modal-close" onclick="closeDetailModal()">&#10005;</button>
+      </div>
+      <div class="detail-modal-body">
+        <canvas id="detail-canvas"></canvas>
+        <div id="detail-stats"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="simulator.js"></script>
+<script src="visualizer.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
