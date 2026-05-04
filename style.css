@@ -211,7 +211,7 @@ body {
 .level-btn.active { background: #dbeafe; border-color: #3b82f6; color: #1e40af; }
 
 .arch-svg-container {
-  background: white; min-height: 420px; max-height: 620px; overflow-y: auto;
+  background: white; min-height: 300px; overflow-y: auto;
   display: flex; align-items: flex-start; justify-content: center;
   position: relative;
 }

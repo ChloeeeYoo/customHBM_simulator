@@ -181,7 +181,20 @@ class ArchVisualizer {
 
   // ── Tray Level ────────────────────────────────────────────────────────────
   _renderTrayLevel(svg, W, results) {
-    const H = 460;
+    const numSiPs = (results && results.params && results.params.numSiPs) || 6;
+    const multiPEsPerSiP = (results && results.params && results.params.multiPEsPerSiP) || 16;
+    const pesPerMPE = (results && results.params && results.params.pesPerMultiPE) || 8;
+
+    // Compute height dynamically from content
+    const sipH = 110;
+    const startY = 44;
+    const _cols = Math.min(numSiPs, 3);
+    const _rows = Math.ceil(numSiPs / _cols);
+    const cpuH = 52;
+    const _cpuY = startY + _rows * (sipH + 14) + 14;
+    const _legY = _cpuY + cpuH + 14;
+    const H = _legY + 30;
+
     svg.setAttribute('height', H);
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
 
@@ -190,11 +203,6 @@ class ArchVisualizer {
     // Background
     const bg = this._el('rect', { x: 0, y: 0, width: W, height: H, fill: '#f8fafc' });
     g.appendChild(bg);
-
-    // Title
-    const numSiPs = (results && results.params && results.params.numSiPs) || 6;
-    const multiPEsPerSiP = (results && results.params && results.params.multiPEsPerSiP) || 16;
-    const pesPerMPE = (results && results.params && results.params.pesPerMultiPE) || 8;
 
     const title = this._el('text', {
       x: W / 2, y: 24, 'text-anchor': 'middle',
@@ -352,7 +360,26 @@ class ArchVisualizer {
 
   // ── SiP Level ─────────────────────────────────────────────────────────────
   _renderSiPLevel(svg, W, results) {
-    const H = 480;
+    const multiPEsPerSiP = (results && results.params && results.params.multiPEsPerSiP) || 16;
+    const pesPerMPE = (results && results.params && results.params.pesPerMultiPE) || 8;
+    const gridCols = Math.ceil(Math.sqrt(multiPEsPerSiP));
+    const gridRows = Math.ceil(multiPEsPerSiP / gridCols);
+    const numIODie = Math.ceil(multiPEsPerSiP / 8);
+
+    // Reserve right margin for IO Dies
+    const ioDieW = 68, ioDieH = 28, ioDieGap = 16;
+    const mpeW = Math.min(100, (W - ioDieW - ioDieGap * 2 - 60) / gridCols - 14);
+    const mpeH = 80;
+    const gapX = 14, gapY = 14;
+    const totalGridW = gridCols * (mpeW + gapX) - gapX;
+    const totalGridH = gridRows * (mpeH + gapY) - gapY;
+    const gridStartX = Math.max(20, (W - totalGridW - ioDieW - ioDieGap) / 2);
+    const gridStartY = 38;
+
+    // Dynamic height: grid + legend padding
+    const legY = gridStartY + totalGridH + 18;
+    const H = legY + 30;
+
     svg.setAttribute('height', H);
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
 
@@ -361,24 +388,12 @@ class ArchVisualizer {
     const bg = this._el('rect', { x: 0, y: 0, width: W, height: H, fill: '#f8fafc' });
     g.appendChild(bg);
 
-    const multiPEsPerSiP = (results && results.params && results.params.multiPEsPerSiP) || 16;
-    const pesPerMPE = (results && results.params && results.params.pesPerMultiPE) || 8;
-    const gridCols = Math.ceil(Math.sqrt(multiPEsPerSiP));
-    const gridRows = Math.ceil(multiPEsPerSiP / gridCols);
-
     const title = this._el('text', {
       x: W / 2, y: 22, 'text-anchor': 'middle',
       'font-size': 13, 'font-weight': '700', fill: '#1e293b',
     });
-    title.textContent = `SiP Level: ${gridCols}×${gridRows} Multi-PE Grid + 4 IO Die + 2D Mesh  (${multiPEsPerSiP * pesPerMPE} PEs total)`;
+    title.textContent = `SiP Level: ${gridCols}×${gridRows} Multi-PE Grid + ${numIODie} IO-Die (1/8 mPE) + 2D Mesh  (${multiPEsPerSiP * pesPerMPE} PEs total)`;
     g.appendChild(title);
-    const mpeW = Math.min(110, (W - 80) / (gridCols + 1) - 10);
-    const mpeH = 80;
-    const gapX = 14, gapY = 14;
-    const totalGridW = gridCols * (mpeW + gapX) - gapX;
-    const totalGridH = gridRows * (mpeH + gapY) - gapY;
-    const gridStartX = (W - totalGridW) / 2;
-    const gridStartY = 38;
 
     // mPE positions
     const mpePos = [];
@@ -478,32 +493,52 @@ class ArchVisualizer {
       g.appendChild(mpeG);
     });
 
-    // IO Die boxes at edges (4 sides)
-    const ioBoxes = [
-      { x: gridStartX + totalGridW / 2 - 60, y: gridStartY + totalGridH + 12, w: 120, h: 28, label: 'IO Die (S)' },
-      { x: gridStartX + totalGridW / 2 - 60, y: gridStartY - 38, w: 120, h: 28, label: 'IO Die (N)' },
-      { x: gridStartX - 80, y: gridStartY + totalGridH / 2 - 14, w: 72, h: 28, label: 'IO Die W' },
-      { x: gridStartX + totalGridW + 8, y: gridStartY + totalGridH / 2 - 14, w: 72, h: 28, label: 'IO Die E' },
-    ];
-    ioBoxes.forEach(io => {
+    // IO-Die boxes: 1 per 8 mPEs, stacked on the right side of the grid
+    const ioDieX = gridStartX + totalGridW + ioDieGap;
+    for (let d = 0; d < numIODie; d++) {
+      const startMPE = d * 8;
+      const endMPE = Math.min((d + 1) * 8 - 1, multiPEsPerSiP - 1);
+      const groupMPEs = mpePos.slice(startMPE, endMPE + 1);
+
+      const groupMinY = Math.min(...groupMPEs.map(m => m.y));
+      const groupMaxY = Math.max(...groupMPEs.map(m => m.y + mpeH));
+      const ioDieCY = (groupMinY + groupMaxY) / 2;
+      const ioDieY = ioDieCY - ioDieH / 2;
+
+      // Connection lines from each mPE right edge to IO-Die
+      groupMPEs.forEach(mp => {
+        g.appendChild(this._el('line', {
+          x1: mp.x + mpeW, y1: mp.cy,
+          x2: ioDieX, y2: ioDieCY,
+          stroke: '#ca8a04', 'stroke-width': 1.2, opacity: 0.65,
+          'stroke-dasharray': '4 2',
+        }));
+      });
+
+      // IO-Die box
       g.appendChild(this._el('rect', {
-        x: io.x, y: io.y, width: io.w, height: io.h,
+        x: ioDieX, y: ioDieY, width: ioDieW, height: ioDieH,
         rx: 5, fill: '#fef9c3', stroke: '#ca8a04', 'stroke-width': 1.5,
       }));
       const lt = this._el('text', {
-        x: io.x + io.w / 2, y: io.y + 16,
+        x: ioDieX + ioDieW / 2, y: ioDieY + 11,
         'text-anchor': 'middle', 'font-size': 9, 'font-weight': '700', fill: '#713f12',
       });
-      lt.textContent = io.label;
+      lt.textContent = `IO-Die ${d}`;
       g.appendChild(lt);
-    });
+      const ls = this._el('text', {
+        x: ioDieX + ioDieW / 2, y: ioDieY + 21,
+        'text-anchor': 'middle', 'font-size': 8, fill: '#92400e', opacity: 0.85,
+      });
+      ls.textContent = `mPE ${startMPE}–${endMPE}`;
+      g.appendChild(ls);
+    }
 
     // Legend
-    const legY = gridStartY + totalGridH + 54;
     const legItems = [
       { color: '#22c55e', label: 'mPE (Multi-PE element)' },
       { color: '#3b82f6', label: '2D Mesh bus (256GB/s)' },
-      { color: '#ca8a04', label: 'IO Die (UCIe-A)' },
+      { color: '#ca8a04', label: `IO-Die (1 per 8 mPE, ${numIODie} total)` },
     ];
     legItems.forEach((item, i) => {
       const lx = 20 + i * Math.floor((W - 40) / legItems.length);
