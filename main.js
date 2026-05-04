@@ -409,6 +409,10 @@ function openDetailModal(type, index, results) {
     titleEl.textContent = 'Control Unit Detail';
   } else if (type === 'dma') {
     titleEl.textContent = 'DMA Engine Detail';
+  } else if (type === 'sip') {
+    titleEl.textContent = 'SiP ' + index + ' Detail';
+  } else if (type === 'multipe') {
+    titleEl.textContent = 'Multi-PE ' + index + ' Detail';
   } else {
     titleEl.textContent = 'Component Detail';
   }
@@ -425,6 +429,10 @@ function openDetailModal(type, index, results) {
       renderCtrlDetail(canvas, statsEl, results, params);
     } else if (type === 'dma') {
       renderDMADetail(canvas, statsEl, results, params);
+    } else if (type === 'sip') {
+      renderSiPDetail(canvas, statsEl, index, results, params);
+    } else if (type === 'multipe') {
+      renderMPEDetail(canvas, statsEl, index, results, params);
     }
   });
 }

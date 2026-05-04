@@ -1521,6 +1521,262 @@ function renderDMADetail(canvas, statsEl, results, params) {
     statRow('Burst transfer', formatCycles(results.weightTxn.transferCycles) + ' cyc');
 }
 
+// ── SiP Detail Rendering ─────────────────────────────────────────────────────────
+
+function renderSiPDetail(canvas, statsEl, sipIndex, results, params) {
+  const W = canvas.offsetWidth || 580;
+  const H = Math.min(Math.round(W * 0.72), 420);
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  const mpeCount   = params.multiPEsPerSiP || 16;
+  const pesPerMPE  = params.pesPerMultiPE  || 8;
+  const numIODie   = Math.ceil(mpeCount / 8);
+  const totalPEs   = mpeCount * pesPerMPE;
+  const hbmBW      = params.hbmBandwidthGBs || 1000;
+  const sramCapMB  = params.sramCapacityMB  || 16;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillRect(0, 0, W, H);
+
+  // ── Title bar ──
+  ctx.fillStyle = '#1e293b';
+  ctx.font = 'bold 13px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(`SiP ${sipIndex}  —  ${mpeCount} Multi-PE · ${numIODie} IO-Die · ${totalPEs} total PEs`, W / 2, 22);
+
+  // ── mPE grid (left block) ──
+  const gridCols = Math.ceil(Math.sqrt(mpeCount));
+  const gridRows = Math.ceil(mpeCount / gridCols);
+  const pad = 12;
+  const gridAreaW = W * 0.62;
+  const cellW = (gridAreaW - pad * (gridCols + 1)) / gridCols;
+  const cellH = (H - 50 - pad * (gridRows + 1)) / gridRows;
+  const gridX0 = pad;
+  const gridY0 = 36;
+
+  for (let i = 0; i < mpeCount; i++) {
+    const col = i % gridCols, row = Math.floor(i / gridCols);
+    const cx = gridX0 + pad + col * (cellW + pad);
+    const cy = gridY0 + row * (cellH + pad);
+
+    ctx.fillStyle = '#dcfce7';
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(cx, cy, cellW, cellH, 5); ctx.fill(); ctx.stroke();
+
+    ctx.fillStyle = '#166534';
+    ctx.font = `bold ${Math.max(8, Math.min(10, cellW / 8))}px system-ui`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`mPE ${i}`, cx + cellW / 2, cy + cellH * 0.38);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = `${Math.max(7, Math.min(9, cellW / 9))}px system-ui`;
+    ctx.fillText(`${pesPerMPE} PE`, cx + cellW / 2, cy + cellH * 0.65);
+  }
+
+  // ── IO-Die column (right block) ──
+  const ioDieX = gridAreaW + pad * 2;
+  const ioDieW = W - ioDieX - pad;
+  const ioDieH = Math.min(48, (H - 50) / numIODie - 10);
+  const ioDieSpacing = (H - 50) / numIODie;
+
+  for (let d = 0; d < numIODie; d++) {
+    const startMPE = d * 8;
+    const endMPE   = Math.min((d + 1) * 8 - 1, mpeCount - 1);
+    const ioDieY = 36 + d * ioDieSpacing + (ioDieSpacing - ioDieH) / 2;
+
+    // Connection line from grid edge to IO-Die
+    const groupMinRow = Math.floor(startMPE / gridCols);
+    const groupMaxRow = Math.floor(endMPE / gridCols);
+    const lineY = gridY0 + ((groupMinRow + groupMaxRow) / 2) * (cellH + pad) + cellH / 2;
+    ctx.strokeStyle = '#ca8a04'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(gridAreaW + pad, lineY);
+    ctx.lineTo(ioDieX, ioDieY + ioDieH / 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#fef9c3';
+    ctx.strokeStyle = '#ca8a04';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(ioDieX, ioDieY, ioDieW, ioDieH, 5); ctx.fill(); ctx.stroke();
+
+    ctx.fillStyle = '#713f12';
+    ctx.font = 'bold 9px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(`IO-Die ${d}`, ioDieX + ioDieW / 2, ioDieY + ioDieH * 0.42);
+    ctx.font = '8px system-ui';
+    ctx.fillStyle = '#92400e';
+    ctx.fillText(`mPE ${startMPE}–${endMPE}`, ioDieX + ioDieW / 2, ioDieY + ioDieH * 0.75);
+  }
+
+  // ── Stats ──
+  const hbmPerSiP = Math.round(hbmBW / (params.numSiPs || 1));
+  statsEl.innerHTML =
+    `<div style="font-weight:700;font-size:13px;margin-bottom:10px;color:#1e293b">SiP ${sipIndex} Statistics</div>` +
+    '<div style="margin-bottom:12px">' +
+      '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:5px">Compute</div>' +
+      statRow('Multi-PEs', mpeCount) +
+      statRow('PEs / Multi-PE', pesPerMPE) +
+      statRow('Total PEs', totalPEs) +
+      statRow('MACs / PE / cycle', params.macsPerPE || 256) +
+      statRow('Peak FLOPs/s', ((params.macsPerPE || 256) * 2 * totalPEs * (params.clockFreqGHz || 2) * 1e9 / 1e12).toFixed(1) + ' TFLOPs') +
+    '</div>' +
+    '<div style="margin-bottom:12px">' +
+      '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:5px">Memory</div>' +
+      statRow('SRAM / PE', sramCapMB + ' MB') +
+      statRow('Total SRAM', (sramCapMB * totalPEs / 1024).toFixed(1) + ' GB') +
+      statRow('HBM BW (SiP share)', hbmPerSiP + ' GB/s') +
+    '</div>' +
+    '<div style="margin-bottom:12px">' +
+      '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:5px">IO</div>' +
+      statRow('IO-Die count', numIODie + `  (1 per 8 mPE)`) +
+      statRow('mPE / IO-Die', 8) +
+      statRow('Interface', 'UCIe-A') +
+    '</div>';
+}
+
+// ── Multi-PE Detail Rendering ─────────────────────────────────────────────────────
+
+function renderMPEDetail(canvas, statsEl, mpeIndex, results, params) {
+  const W = canvas.offsetWidth || 580;
+  const H = Math.min(Math.round(W * 0.72), 420);
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  const pesPerMPE  = params.pesPerMultiPE || 8;
+  const sramCapMB  = params.sramCapacityMB || 16;
+  const macsPerPE  = params.macsPerPE || 256;
+  const hbmBanks   = params.numHBMBanks || 4;
+  const hbmBW      = params.hbmBandwidthGBs || 1000;
+  const bwPerMPE   = Math.round(hbmBW / Math.max(params.multiPEsPerSiP || 16, 1));
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillRect(0, 0, W, H);
+
+  // ── Title ──
+  ctx.fillStyle = '#1e293b';
+  ctx.font = 'bold 13px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(`Multi-PE ${mpeIndex}  —  ${pesPerMPE} PEs · HBM · Control Unit`, W / 2, 22);
+
+  const pad = 12;
+  const topY = 36;
+
+  // ── HBM block (top) ──
+  const hbmH = 44;
+  ctx.fillStyle = '#fee2e2'; ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.roundRect(pad, topY, W - pad * 2, hbmH, 7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#991b1b'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('HBM (Off-Chip)', W / 2, topY + 17);
+  ctx.font = '9px system-ui'; ctx.fillStyle = '#64748b';
+  ctx.fillText(`BW: ${bwPerMPE} GB/s  ·  ${hbmBanks} banks  ·  Latency: ${params.hbmLatencyNs || 100} ns`, W / 2, topY + 32);
+
+  // Arrow HBM → CU
+  const arrowX = W / 2;
+  ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(arrowX, topY + hbmH); ctx.lineTo(arrowX, topY + hbmH + 12); ctx.stroke();
+
+  // ── Control Unit (center-top) ──
+  const cuY = topY + hbmH + 14;
+  const cuH = 36;
+  const cuW = W * 0.55;
+  const cuX = (W - cuW) / 2;
+  ctx.fillStyle = '#f3e8ff'; ctx.strokeStyle = '#a855f7'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.roundRect(cuX, cuY, cuW, cuH, 7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#6b21a8'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Control Unit', W / 2, cuY + 15);
+  ctx.font = '9px system-ui'; ctx.fillStyle = '#64748b';
+  ctx.fillText('dispatch · arbiter · DMA · UCIe-A', W / 2, cuY + 28);
+
+  // Arrows CU → PEs
+  const peAreaY = cuY + cuH + 14;
+  const peAreaH = H - peAreaY - pad;
+  const peCols  = Math.min(pesPerMPE, 4);
+  const peRows  = Math.ceil(pesPerMPE / peCols);
+  const peGap   = 8;
+  const peW = (W - pad * 2 - peGap * (peCols - 1)) / peCols;
+  const peH = (peAreaH - peGap * (peRows - 1)) / peRows;
+
+  for (let i = 0; i < pesPerMPE; i++) {
+    const col = i % peCols, row = Math.floor(i / peCols);
+    const px = pad + col * (peW + peGap);
+    const py = peAreaY + row * (peH + peGap);
+    const pcx = px + peW / 2;
+
+    // Arrow from CU to each PE (only first row)
+    if (row === 0) {
+      ctx.strokeStyle = '#a855f7'; ctx.lineWidth = 1; ctx.setLineDash([3, 2]);
+      ctx.beginPath();
+      ctx.moveTo(cuX + (col + 0.5) * (cuW / peCols), cuY + cuH);
+      ctx.lineTo(pcx, py);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // PE box (outer)
+    ctx.fillStyle = '#dcfce7'; ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(px, py, peW, peH, 5); ctx.fill(); ctx.stroke();
+
+    // PE label
+    ctx.fillStyle = '#166534'; ctx.font = `bold ${Math.max(8, Math.min(10, peW / 6))}px system-ui`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`PE ${i}`, pcx, py + peH * 0.28);
+
+    // SRAM micro-bar
+    const barH = Math.max(4, peH * 0.18);
+    ctx.fillStyle = '#dbeafe'; ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(px + 4, py + peH * 0.38, peW - 8, barH, 2); ctx.fill(); ctx.stroke();
+    if (peW > 40) {
+      ctx.fillStyle = '#1e40af'; ctx.font = `${Math.max(6, Math.min(8, peW / 8))}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.fillText('SRAM', pcx, py + peH * 0.38 + barH * 0.75);
+    }
+
+    // MAC micro-bar
+    const macY2 = py + peH * 0.38 + barH + 4;
+    const macBarH = Math.max(4, peH * 0.22);
+    ctx.fillStyle = '#bbf7d0'; ctx.strokeStyle = '#16a34a'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(px + 4, macY2, peW - 8, macBarH, 2); ctx.fill(); ctx.stroke();
+    if (peW > 40) {
+      ctx.fillStyle = '#14532d'; ctx.font = `${Math.max(6, Math.min(8, peW / 8))}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.fillText('MAC', pcx, macY2 + macBarH * 0.75);
+    }
+  }
+
+  // ── Stats ──
+  const peakFLOPs = (macsPerPE * 2 * pesPerMPE * (params.clockFreqGHz || 2)).toFixed(0);
+  statsEl.innerHTML =
+    `<div style="font-weight:700;font-size:13px;margin-bottom:10px;color:#1e293b">Multi-PE ${mpeIndex} Statistics</div>` +
+    '<div style="margin-bottom:12px">' +
+      '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:5px">Compute</div>' +
+      statRow('PEs', pesPerMPE) +
+      statRow('MACs / PE / cycle', macsPerPE) +
+      statRow('Peak GFLOPs/s', peakFLOPs) +
+      statRow('Data type', params.dataType) +
+    '</div>' +
+    '<div style="margin-bottom:12px">' +
+      '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:5px">Memory</div>' +
+      statRow('SRAM / PE', sramCapMB + ' MB') +
+      statRow('SRAM banks / PE', params.sramNumBanks || 16) +
+      statRow('Total SRAM', (sramCapMB * pesPerMPE) + ' MB') +
+      statRow('HBM BW (share)', bwPerMPE + ' GB/s') +
+      statRow('HBM latency', (params.hbmLatencyNs || 100) + ' ns') +
+    '</div>' +
+    '<div style="margin-bottom:12px">' +
+      '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:5px">Control Unit</div>' +
+      statRow('Bus width', params.busWidthBits + ' bits') +
+      statRow('Burst length', params.burstLength + ' beats') +
+      statRow('Interface', 'UCIe-A (to IO-Die)') +
+    '</div>';
+}
+
 // ── Roofline Chart ─────────────────────────────────────────────────────────────
 
 function drawRoofline(canvas, results) {
