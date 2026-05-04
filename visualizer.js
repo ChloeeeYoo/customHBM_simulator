@@ -186,14 +186,10 @@ class ArchVisualizer {
     const pesPerMPE = (results && results.params && results.params.pesPerMultiPE) || 8;
 
     // Compute height dynamically from content
-    const sipH = 110;
-    const startY = 44;
     const _cols = Math.min(numSiPs, 3);
     const _rows = Math.ceil(numSiPs / _cols);
-    const cpuH = 52;
-    const _cpuY = startY + _rows * (sipH + 14) + 14;
-    const _legY = _cpuY + cpuH + 14;
-    const H = _legY + 30;
+    const _cpuY = 44 + _rows * (110 + 14) + 14;
+    const H = _cpuY + 52 + 14 + 30; // cpuY + cpuH + legPad + bottomPad
 
     svg.setAttribute('height', H);
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
